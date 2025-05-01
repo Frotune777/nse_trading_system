@@ -1,0 +1,26 @@
+📁 Project structure for: D:\Python Project\nse_trading_system (with file sizes)
+├── .idea
+│   ├── .gitignore (0.0 KB)
+│   ├── inspectionProfiles
+│   │   ├── Project_Default.xml (0.5 KB)
+│   │   └── profiles_settings.xml (0.2 KB)
+│   ├── misc.xml (0.2 KB)
+│   ├── modules.xml (0.3 KB)
+│   ├── nse_trading_system.iml (0.4 KB)
+│   ├── vcs.xml (0.1 KB)
+│   └── workspace.xml (2.2 KB)
+├── config
+│   └── symbols.yaml (0.0 KB)
+├── libs
+│   ├── data_cleaner.py (0.9 KB)
+│   ├── data_fetcher.py (3.4 KB)
+│   ├── nse_data_fetcher.py (7.1 KB)
+│   └── storage.py (1.0 KB)
+├── requirements.txt (0.0 KB)
+├── scripts
+│   ├── data
+│   │   ├── processed
+│   │   └── raw
+│   ├── fetch_data.py (3.2 KB)
+│   └── update_daily.py (0.7 KB)
+└── structure.py (1.8 KB)
