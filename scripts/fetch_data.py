@@ -79,7 +79,7 @@ def main():
 
         print("💾 Saving data...")
         storage.save_to_parquet(enhanced_df, args['symbol'], args['interval'])
-        storage.update_sqlite(enhanced_df, f"{args['symbol']}_ohlc")
+        storage.update_sqlite(enhanced_df, args['symbol'], args['interval'])
 
         print(f"\n🎉 Successfully saved {len(enhanced_df)} records")
         print(f"📅 Date range: {enhanced_df.index.min().date()} to {enhanced_df.index.max().date()}")

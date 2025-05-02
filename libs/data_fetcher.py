@@ -9,30 +9,43 @@ class NSEDataFetcher:
     def __init__(self):
         self.session = requests.Session()
         self._configure_session()
+        self.cookie_refresh_interval = 30  # Minutes
+        self.last_cookie_refresh = None
+        self.max_retries = 5
+        self.timeout = 15
 
     def _configure_session(self):
-        """Configure session headers and cookies"""
+        """Configure session with proper headers"""
         self.session.headers.update({
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
             "Accept": "application/json",
             "Accept-Language": "en-US,en;q=0.9",
             "Connection": "keep-alive"
         })
-        # Initial cookie setup
-        self._refresh_cookies()
+        self._refresh_cookies(force=True)
 
-    @retry(stop=stop_after_attempt(3),
-           wait=wait_exponential(multiplier=1, min=4, max=10))
-    def _refresh_cookies(self):
+    def _should_refresh_cookies(self):
+        """Check if cookies need refresh"""
+        if not self.last_cookie_refresh:
+            return True
+        return (datetime.now() - self.last_cookie_refresh).total_seconds() > (self.cookie_refresh_interval * 60)
+
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+    def _refresh_cookies(self, force=False):
         """Refresh session cookies with retry"""
-        try:
-            self.session.get("https://www.nseindia.com", timeout=5)
-        except requests.exceptions.RequestException as e:
-            print(f"Cookie refresh failed: {str(e)}")
-            raise
+        if force or self._should_refresh_cookies():
+            try:
+                # First get the homepage to set cookies
+                self.session.get("https://www.nseindia.com", timeout=self.timeout)
+                # Then get market data page to set additional cookies
+                self.session.get("https://www.nseindia.com/market-data", timeout=self.timeout)
+                self.last_cookie_refresh = datetime.now()
+                print("Cookies refreshed successfully")
+            except requests.exceptions.RequestException as e:
+                print(f"Cookie refresh failed: {str(e)}")
+                raise
 
-    @retry(stop=stop_after_attempt(3),
-           wait=wait_exponential(multiplier=1, min=4, max=10))
+    @retry(stop=stop_after_attempt(5), wait=wait_exponential(multiplier=1, min=2, max=30))
     def fetch_data(self, symbol, start, end):
         """
         Fetch OHLC data for given symbol and date range
@@ -44,7 +57,7 @@ class NSEDataFetcher:
             pd.DataFrame: DataFrame with OHLC data
         """
         try:
-            # Refresh cookies before each request
+            # Refresh cookies if needed
             self._refresh_cookies()
 
             url = "https://www.nseindia.com/api/historical/cm/equity"
@@ -55,10 +68,13 @@ class NSEDataFetcher:
                 'to': end.strftime('%d-%m-%Y')
             }
 
+            # Add delay to avoid rate limiting
+            time.sleep(1)
+
             response = self.session.get(
                 url,
                 params=params,
-                timeout=10
+                timeout=self.timeout
             )
             response.raise_for_status()
 
@@ -72,7 +88,7 @@ class NSEDataFetcher:
 
             # Standardize column names
             column_map = {
-                'CH_TIMESTAMP': 'date',
+                'CH_TIMESTAMP': 'datetime',
                 'CH_OPENING_PRICE': 'open',
                 'CH_TRADE_HIGH_PRICE': 'high',
                 'CH_TRADE_LOW_PRICE': 'low',
@@ -82,20 +98,19 @@ class NSEDataFetcher:
             df = df.rename(columns=column_map)[list(column_map.values())]
 
             # Convert date format
-            df['date'] = pd.to_datetime(df['date'], format='%d-%b-%Y')
-            df = df.sort_values('date')
+            df['datetime'] = pd.to_datetime(df['datetime'], format='%d-%b-%Y')
+            df = df.sort_values('datetime').set_index('datetime')
 
             return df
 
         except requests.exceptions.HTTPError as http_err:
             print(f"HTTP error for {symbol}: {http_err}")
-        except requests.exceptions.ConnectionError as conn_err:
-            print(f"Connection error for {symbol}: {conn_err}")
+            if http_err.response.status_code == 401:
+                self._refresh_cookies(force=True)
+            raise
+        except requests.exceptions.RequestException as req_err:
+            print(f"Request failed for {symbol}: {req_err}")
+            raise
         except Exception as e:
-            print(f"Error fetching {symbol}: {str(e)}")
-
-        return pd.DataFrame()
-
-    # Alias for backward compatibility
-    def fetch_ohlc(self, symbol, start, end):
-        return self.fetch_data(symbol, start, end)
+            print(f"Unexpected error for {symbol}: {str(e)}")
+            raise
