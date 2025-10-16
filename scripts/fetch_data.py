@@ -1,10 +1,23 @@
 #!/usr/bin/env python3
+#!/usr/bin/env python3
+import sys
+from pathlib import Path
+
+# Add project root to Python path
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+# Now imports will work
+from libs.nse_data_fetcher import NSEMasterData
+from libs.data_cleaner import validate_data, add_technical_features
+from libs.storage import DataStorage
 import argparse
 from datetime import datetime, timedelta
 from libs.nse_data_fetcher import NSEMasterData
 from libs.data_cleaner import validate_data, add_technical_features
 from libs.storage import DataStorage
 import sys
+
 
 
 def get_user_input():

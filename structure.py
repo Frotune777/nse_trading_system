@@ -41,7 +41,7 @@ def generate_tree(start_path, prefix=""):
     return output
 
 # Change to your project root
-project_root = r"D:\Python Project\nse_trading_system"
+project_root = r"/home/fortune/Desktop/nse_trading/nse_trading_system"
 structure_file = os.path.join(project_root, "structure.txt")
 
 tree_lines = [f"📁 Project structure for: {project_root} (with file sizes)"]

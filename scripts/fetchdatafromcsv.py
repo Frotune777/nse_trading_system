@@ -7,8 +7,7 @@ from libs.data_cleaner import validate_data, add_technical_features
 from libs.storage import DataStorage
 import sys
 import pandas as pd
-
-DEFAULT_CSV = 'stocklist.csv'
+DEFAULT_CSV = '/home/fortune/Desktop/nse_trading/nse_trading_system/scripts/stocklist.csv'
 
 def get_user_input():
     """Get input from user interactively"""
