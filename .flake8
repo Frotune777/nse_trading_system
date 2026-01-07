@@ -1,0 +1,7 @@
+[flake8]
+max-line-length = 120
+exclude = .venv,venv,mlruns,.git,__pycache__,build,dist,models,data
+ignore = E203, W503, E402
+# E203: Whitespace before ':' (black compatibility)
+# W503: Line break before binary operator
+# E402: Module level import not at top of file (common in scripts with sys.path hacks)
