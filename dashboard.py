@@ -23,6 +23,21 @@ def page_quad_report():
     st.header("🏆 Quad Analysis Report Card")
     st.caption("Holistic evaluation based on 4 Pillars: Fundamental, Technical, Institutional, Macro")
     
+    # Custom CSS for smaller font
+    st.markdown("""
+        <style>
+        html, body, [class*="css"]  {
+            font-size: 14px;
+        }
+        .stMetric {
+            font-size: 0.8rem !important;
+        }
+        h1, h2, h3 {
+            font-size: 1.5rem !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+    
     col1, col2 = st.columns([1, 2])
     with col1:
         config = load_config()
@@ -1823,8 +1838,8 @@ def page_backtesting():
         
         st.markdown("---")
         st.markdown("### Strategy Parameters")
-        buy_threshold = st.slider("Buy Threshold (Prob Up)", 0.3, 0.9, 0.6, 0.05)
-        sell_threshold = st.slider("Sell Threshold (Prob Down)", 0.3, 0.9, 0.6, 0.05)
+        buy_threshold = st.slider("Buy Threshold (Prob Up)", 0.3, 0.9, 0.4, 0.05)
+        sell_threshold = st.slider("Sell Threshold (Prob Down)", 0.3, 0.9, 0.4, 0.05)
         
     with col2:
         st.subheader("📊 Backtest Results")
@@ -1844,23 +1859,19 @@ def page_backtesting():
                     features = engineer.build_all()
                     ml_data = pd.concat([df, features], axis=1).dropna()
                     
-                    # 3. Get Predictions Strategy needs probabilities
-                    # To speed up, we might cache predictions, but for now predict all
-                    # This might be slow for large datasets
+                    # 3. Get Predictions
                     st.info(f"Generating predictions for {len(ml_data)} records...")
                     
-                    # Predict in batches or all at once? All at once for XGBoost should be fine for <数k records
                     X = ml_data[features.columns]
-                    
-                    # Pipeline predict returns classes, probs
-                    # we need probabilities in the dataframe
                     _, probs = pipeline.predict(X)
                     
-                    # Add probabilities to dataframe for Strategy to read
-                    # probs is (n_samples, 3)
                     ml_data['probability_down'] = probs[:, 0]
                     ml_data['probability_neutral'] = probs[:, 1]
                     ml_data['probability_up'] = probs[:, 2]
+                    
+                    # Debug: Show probability distribution
+                    with st.expander("Probability Distribution (Debug)"):
+                        st.write(ml_data[['probability_up', 'probability_down']].describe())
                     
                     # 4. Run Backtester
                     strategy = MLStrategy(
