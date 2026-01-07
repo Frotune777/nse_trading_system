@@ -247,6 +247,7 @@ def render_sidebar():
         "Quad Report Card", 
         "ML Predictions", 
         "Strategy Backtesting",
+        "MLOps Monitor",
         "Data Management", 
         "Database Info"
     ])
@@ -1935,6 +1936,130 @@ def main():
         page_data_management()
     elif page == "Database Info":
         page_database_info()
+    elif page == "MLOps Monitor":
+        page_mlops()
+
+def page_mlops():
+    """
+    MLOps Monitor Page: API Health, Data Drift, Experiment Tracking.
+    """
+    st.title("🤖 MLOps Monitor")
+    
+    # 1. System Health
+    st.header("1. System Health")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("API Status")
+        try:
+            import requests
+            from config import PROJECT_ROOT
+            response = requests.get("http://localhost:8000/health", timeout=2)
+            if response.status_code == 200:
+                data = response.json()
+                st.success(f"✅ Online (Latency: {response.elapsed.total_seconds()*1000:.0f}ms)")
+                st.json(data)
+            else:
+                st.error(f"❌ Error: {response.status_code}")
+        except Exception as e:
+            st.error("❌ Offline (Connection Refused)")
+            st.caption("Ensure `uvicorn api.main:app` is running on port 8000")
+            
+    with col2:
+        st.subheader("Database Status")
+        try:
+            import sqlite3
+            from config import PROJECT_ROOT
+            conn = sqlite3.connect(PROJECT_ROOT / "data" / "trading.db")
+            cursor = conn.cursor()
+            cursor.execute("SELECT count(*) FROM ml_predictions")
+            count = cursor.fetchone()[0]
+            conn.close()
+            st.success("✅ Connected")
+            st.metric("Total Predictions Tracked", count)
+        except Exception as e:
+            st.error(f"❌ Error: {e}")
+
+    st.markdown("---")
+
+    # 2. Data Drift Monitor
+    st.header("2. Data Drift Monitor")
+    
+    symbol = st.selectbox("Select Symbol for Drift Check", ["TCS", "RELIANCE", "INFY", "SBIN"])
+    timeframe = "1d"
+    
+    if st.button("Analyze Data Drift"):
+        with st.spinner("Calculating Drift Metrics..."):
+            try:
+                # Load data
+                from libs.historical_data_manager import HistoricalDataManager
+                manager = HistoricalDataManager()
+                df = manager.get_symbol_data(symbol, timeframe)
+                if df is None:
+                    st.error("Data not found")
+                else:
+                    # Engineer features
+                    from libs.feature_engineering import FeatureEngineer
+                    from libs.data_drift_detector import DataDriftDetector
+                    
+                    engineer = FeatureEngineer(df)
+                    features = engineer.build_all()
+                    
+                    # Split Reference (Old) vs Current (New)
+                    # Simulating reference as first 50% and current as last 20%
+                    n = len(features)
+                    ref_data = features.iloc[:int(n*0.5)]
+                    curr_data = features.iloc[int(n*0.8):]
+                    
+                    detector = DataDriftDetector(ref_data)
+                    report = detector.detect_drift(curr_data)
+                    
+                    if report['drift_detected']:
+                        st.error(f"⚠️ Drift Detected in {len(report['drifted_features'])} features!")
+                    else:
+                        st.success("✅ No Significant Drift Detected")
+                    
+                    # Details Table
+                    details = []
+                    for feat, metric in report['details'].items():
+                        details.append({
+                            "Feature": feat,
+                            "PSI": f"{metric['psi']:.4f}",
+                            "KS p-value": f"{metric['ks_p_value']:.4f}",
+                            "Status": "🔴 Drift" if metric['drift_detected'] else "🟢 Stable"
+                        })
+                    
+                    st.dataframe(pd.DataFrame(details))
+                    
+            except Exception as e:
+                st.error(f"Drift analysis failed: {e}")
+
+    st.markdown("---")
+
+    # 3. Experiment Tracking
+    st.header("3. Experiment Experiments (MLflow)")
+    
+    try:
+        from config import PROJECT_ROOT
+        mlruns_path = PROJECT_ROOT / "mlruns"
+        if mlruns_path.exists():
+            import mlflow
+            mlflow.set_tracking_uri(f"file://{mlruns_path}")
+            
+            runs = mlflow.search_runs()
+            if not runs.empty:
+                st.subheader("Recent Training Runs")
+                # Clean up columns for display
+                cols = [c for c in runs.columns if c.startswith("metrics.") or c.startswith("params.") or c == "tags.mlflow.runName"]
+                display_df = runs[cols].head(10)
+                st.dataframe(display_df, use_container_width=True)
+            else:
+                st.info("No experiments found in MLflow.")
+        else:
+            st.warning("MLflow mlruns directory not found.")
+            
+    except Exception as e:
+        st.error(f"Failed to load MLflow data: {e}")
 
 if __name__ == "__main__":
     main()
@@ -1957,6 +2082,9 @@ import plotly.express as px
 from pathlib import Path
 from datetime import datetime, timedelta
 import warnings
+import yaml
+import sys
+import requests
+import sqlite3
 warnings.filterwarnings('ignore')
-
 
