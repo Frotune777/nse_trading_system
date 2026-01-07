@@ -1,17 +1,41 @@
-# Python cache
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
-# Generated data
-data/processed/
-*.parquet
-*.csv
-*.db
-
-# Virtual Environment (if you use one)
-venv/
+# Virtual Environment
 .venv/
-algo_trading/
+venv/
+ENV/
+env/
 
-# System files
-.DS_Store
+# IDEs
+.vscode/
+.idea/
+
+# Project Specific
+# We keep data for now as it's small (36MB), but ignore logs
+*.log
+mlruns/
+# Keep models as they are valuable output
+# models/
+
+# Secrets
+.env

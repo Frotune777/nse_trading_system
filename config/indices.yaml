@@ -1,0 +1,41 @@
+
+indices:
+  - name: "NIFTY 50"
+    symbol: "NIFTY 50"
+    type: "Benchmark"
+  
+  - name: "NIFTY BANK"
+    symbol: "NIFTY BANK"
+    type: "Sector"
+
+  - name: "NIFTY IT"
+    symbol: "NIFTY IT"
+    type: "Sector"
+
+  - name: "NIFTY AUTO"
+    symbol: "NIFTY AUTO"
+    type: "Sector"
+
+  - name: "NIFTY PHARMA"
+    symbol: "NIFTY PHARMA"
+    type: "Sector"
+
+  - name: "NIFTY FMCG"
+    symbol: "NIFTY FMCG"
+    type: "Sector"
+
+  - name: "NIFTY METAL"
+    symbol: "NIFTY METAL"
+    type: "Sector"
+
+  - name: "NIFTY REALTY"
+    symbol: "NIFTY REALTY"
+    type: "Sector"
+
+  - name: "NIFTY ENERGY"
+    symbol: "NIFTY ENERGY"
+    type: "Sector"
+    
+  - name: "NIFTY PSU BANK"
+    symbol: "PSU Bank"
+    type: "Sector"

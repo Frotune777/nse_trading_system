@@ -22,6 +22,39 @@ class DataStorage:
         os.makedirs(self.raw_path, exist_ok=True)
         os.makedirs(self.processed_path, exist_ok=True)
 
+    def _ensure_schema_compatibility(self, conn: sqlite3.Connection, table_name: str, df: pd.DataFrame) -> None:
+        """
+        Checks if the SQLite table exists and if it has all columns present in the DataFrame.
+        If columns are missing in the table, they are added.
+        """
+        cursor = conn.cursor()
+        
+        # Check if table exists
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,))
+        if not cursor.fetchone():
+            return  # Table doesn't exist, to_sql will create it
+
+        # Get existing columns
+        cursor.execute(f"PRAGMA table_info({table_name})")
+        existing_cols = {row[1] for row in cursor.fetchall()}
+        
+        # Find missing columns
+        new_cols = [col for col in df.columns if col not in existing_cols]
+        
+        # Add missing columns
+        for col in new_cols:
+            col_type = "TEXT" # Default to TEXT
+            if pd.api.types.is_integer_dtype(df[col]):
+                col_type = "INTEGER"
+            elif pd.api.types.is_float_dtype(df[col]):
+                col_type = "REAL"
+            
+            try:
+                print(f"Adding new column '{col}' ({col_type}) to table '{table_name}'")
+                cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN \"{col}\" {col_type}")
+            except sqlite3.OperationalError as e:
+                print(f"Error adding column {col}: {e}")
+
     @staticmethod
     def sanitize_table_name(symbol: str, interval: str) -> str:
         raw_name = f"{symbol}_{interval}_ohlc".lower()
@@ -106,6 +139,9 @@ class DataStorage:
         df_prepared_for_sqlite = df_prepared_for_sqlite.reset_index().rename(columns={'Timestamp': 'datetime'})
 
         with sqlite3.connect(str(self.db_path)) as conn:
+            # Check and update schema if needed
+            self._ensure_schema_compatibility(conn, table_name.strip('"'), df_prepared_for_sqlite)
+            
             df_prepared_for_sqlite.to_sql(
                 name=table_name.strip('"'),
                 con=conn,
@@ -123,6 +159,38 @@ class DataStorage:
                     GROUP BY datetime
                 )
             """)
+
+    def update_market_stats(self, df: pd.DataFrame, table_name: str, unique_cols: List[str]) -> None:
+        """
+        Updates structured market stats (non-OHLC) in SQLite with deduplication.
+        """
+        if df.empty:
+            return
+
+        with sqlite3.connect(str(self.db_path)) as conn:
+            # Ensure schema matches
+            self._ensure_schema_compatibility(conn, table_name, df)
+            
+            # Append new data
+            df.to_sql(
+                name=table_name,
+                con=conn,
+                if_exists='append',
+                index=False,
+                method='multi'
+            )
+
+            # Deduplicate
+            cols_str = ", ".join([f'"{c}"' for c in unique_cols])
+            conn.execute(f"""
+                DELETE FROM {table_name}
+                WHERE rowid NOT IN (
+                    SELECT MIN(rowid)
+                    FROM {table_name}
+                    GROUP BY {cols_str}
+                )
+            """)
+            print(f"Updated and deduplicated table '{table_name}'")
 
     def get_last_timestamp(self, symbol: str, interval: str) -> Optional[datetime]:
         table_name = self.sanitize_table_name(symbol, interval).strip('"')
@@ -201,6 +269,11 @@ class DataStorage:
                 df = df.set_index('Timestamp').sort_index()
             return df
         return pd.DataFrame()
+
+    def load_data(self, symbol: str, interval: str) -> pd.DataFrame:
+        """Helper to load data using symbol and interval"""
+        file_name = self.sanitize_file_name(symbol, interval)
+        return self.load_parquet_file(f"{file_name}.parquet")
 
     def list_tables(self) -> List[str]:
         """List all table names in the database"""

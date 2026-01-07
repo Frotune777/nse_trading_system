@@ -28,19 +28,25 @@ class NseUtils:
     def __init__(self):
 
         self.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.83 Safari/537.36',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Upgrade-Insecure-Requests': "1",
             "DNT": "1",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*,q=0.8",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
             'Accept-Language': 'en-US,en;q=0.9',
-            # 'Accept-Encoding': 'gzip, deflate, br, zstd',
-            'Accept-Encoding': 'gzip, deflate',
-            'Connection': 'keep-alive'
+            'Connection': 'keep-alive',
+            'Referer': 'https://www.nseindia.com/',
+            'Sec-Fetch-User': '?1',
+            'Sec-Fetch-Site': 'none',
+            'Sec-Fetch-Mode': 'navigate'
         }
 
         self.session = requests.Session()
-        self.session.get("http://nseindia.com", headers=self.headers)
-        self.cookies = self.session.cookies.get_dict()
+        self.session.headers.update(self.headers)
+        # Prime the session by visiting the home page
+        try:
+            self.session.get("https://www.nseindia.com", timeout=10)
+        except:
+            pass
 
     def pre_market_info(self, category='All'):
         pre_market_xref = {"NIFTY 50": "NIFTY", "Nifty Bank": "BANKNIFTY", "Emerge": "SME", "Securities in F&O": "FO",
@@ -388,6 +394,124 @@ class NseUtils:
         data_df = pd.DataFrame(data_json.json())
         return data_df
 
+        
+    def get_bulk_deals(self, from_date: str = None, to_date: str = None):
+        """
+        Get historical bulk deals from NSE
+        :param from_date: 'dd-mm-yyyy' (default: 30 days ago)
+        :param to_date: 'dd-mm-yyyy' (default: today)
+        :return: pd.DataFrame
+        """
+        if not to_date:
+            to_date = datetime.now().strftime("%d-%m-%Y")
+        if not from_date:
+            from_date = (datetime.now() - timedelta(days=30)).strftime("%d-%m-%Y")
+
+        url = "https://www.nseindia.com/api/historicalOR/bulk-block-short-deals"
+        params = {
+            "optionType": "bulk_deals",
+            "from": from_date,
+            "to": to_date
+        }
+        
+        headers = self.headers.copy()
+        headers["Referer"] = "https://www.nseindia.com/report-detail/display-bulk-and-block-deals"
+        headers["Accept"] = "application/json, text/javascript, */*; q=0.01"
+        
+        try:
+            # Refresh session
+            self.session.get("https://www.nseindia.com/report-detail/display-bulk-and-block-deals", timeout=10)
+            response = self.session.get(url, params=params, headers=headers, timeout=15)
+            
+            if response.status_code == 200:
+                data = response.json()
+                if 'data' in data:
+                    return pd.DataFrame(data['data'])
+            
+            print(f"Bulk Deals Error: {response.status_code}")
+            return pd.DataFrame()
+        except Exception as e:
+            print(f"Error Bulk Deals: {e}")
+            return pd.DataFrame()
+
+    def get_block_deals(self, from_date: str = None, to_date: str = None):
+        """
+        Get historical block deals from NSE
+        :param from_date: 'dd-mm-yyyy' (default: 30 days ago)
+        :param to_date: 'dd-mm-yyyy' (default: today)
+        :return: pd.DataFrame
+        """
+        if not to_date:
+            to_date = datetime.now().strftime("%d-%m-%Y")
+        if not from_date:
+            from_date = (datetime.now() - timedelta(days=30)).strftime("%d-%m-%Y")
+
+        url = "https://www.nseindia.com/api/historicalOR/bulk-block-short-deals"
+        params = {
+            "optionType": "block_deals",
+            "from": from_date,
+            "to": to_date
+        }
+        
+        headers = self.headers.copy()
+        headers["Referer"] = "https://www.nseindia.com/report-detail/display-bulk-and-block-deals"
+        headers["Accept"] = "application/json, text/javascript, */*; q=0.01"
+        
+        try:
+            # Refresh session
+            self.session.get("https://www.nseindia.com/report-detail/display-bulk-and-block-deals", timeout=10)
+            response = self.session.get(url, params=params, headers=headers, timeout=15)
+            
+            if response.status_code == 200:
+                data = response.json()
+                if 'data' in data:
+                    return pd.DataFrame(data['data'])
+            
+            print(f"Block Deals Error: {response.status_code}")
+            return pd.DataFrame()
+        except Exception as e:
+            print(f"Error Block Deals: {e}")
+            return pd.DataFrame()
+
+    def get_short_selling(self, from_date: str = None, to_date: str = None):
+        """
+        Get historical short selling data from NSE
+        :param from_date: 'dd-mm-yyyy' (default: 30 days ago)
+        :param to_date: 'dd-mm-yyyy' (default: today)
+        :return: pd.DataFrame
+        """
+        if not to_date:
+            to_date = datetime.now().strftime("%d-%m-%Y")
+        if not from_date:
+            from_date = (datetime.now() - timedelta(days=30)).strftime("%d-%m-%Y")
+
+        url = "https://www.nseindia.com/api/historicalOR/bulk-block-short-deals"
+        params = {
+            "optionType": "short_selling",
+            "from": from_date,
+            "to": to_date
+        }
+        
+        headers = self.headers.copy()
+        headers["Referer"] = "https://www.nseindia.com/report-detail/display-bulk-and-block-deals"
+        headers["Accept"] = "application/json, text/javascript, */*; q=0.01"
+        
+        try:
+            # Refresh session
+            self.session.get("https://www.nseindia.com/report-detail/display-bulk-and-block-deals", timeout=10)
+            response = self.session.get(url, params=params, headers=headers, timeout=15)
+            
+            if response.status_code == 200:
+                data = response.json()
+                if 'data' in data:
+                    return pd.DataFrame(data['data'])
+            
+            print(f"Short Selling Error: {response.status_code}")
+            return pd.DataFrame()
+        except Exception as e:
+            print(f"Error Short Selling: {e}")
+            return pd.DataFrame()
+
     def get_live_option_chain(self, symbol: str, expiry_date: str = None, oi_mode: str = "full", indices=False):
         """
         get live nse option chain.
@@ -568,7 +692,10 @@ class NseUtils:
                                                                                                      'HIT_INDEX_NAME_UPPER'])
             data_df = pd.merge(data_close_df, data_turnover_df, on='TIMESTAMP', how='inner')
         except Exception as e:
-            raise " Resource not available"
+            print(f"DEBUG: Fetch failed for {index}. Error: {e}")
+            # If it was a JSON decode error, maybe print text?
+            # print(f"DEBUG: Response text: {self.session.get(url, headers=self.headers, cookies=ref.cookies.get_dict()).text[:200]}")
+            raise Exception(f" Resource not available: {e}") from e
 
         data_df.drop(columns='TIMESTAMP', inplace=True)
 
@@ -700,48 +827,71 @@ class NseUtils:
         return gain_dict, loss_dict
 
     def get_corporate_action(self, from_date_str: str = None, to_date_str: str = None, filter: str = None):
-
         # Fetch Corporate Action data from NSE
         if from_date_str is None:
             from_date  = datetime.now() - timedelta(days=30)
             from_date_str = from_date.strftime("%d-%m-%Y")
-            to_date_str = datetime.now().strftime("%d-%m-%Y")
         if to_date_str is None:
             to_date_str = datetime.now().strftime("%d-%m-%Y")
 
+        headers = self.headers.copy()
+        headers["Referer"] = "https://www.nseindia.com/companies-listing/corporate-filings-actions"
+
         try:
-            ref_url = 'https://www.nseindia.com/companies-listing/corporate-filings-actions'
-            ref = requests.get(ref_url, headers=self.headers)
+            # Refresh cookies internally
+            self.session.get("https://www.nseindia.com", timeout=10)
             url = f"https://www.nseindia.com/api/corporates-corporateActions?index=equities&from_date={from_date_str}&to_date={to_date_str}"
-            data_obj = self.session.get(url, headers=self.headers, cookies=ref.cookies.get_dict())
-            corp_action = pd.DataFrame(data_obj.json())
-            if filter is not None:
-                corp_action = corp_action[corp_action['subject'].str.contains(filter, case=False, na=False)]
-            return corp_action
-        except:
-            print("Error fetching Corporate Action Data. Check your input")
-            return None
+            headers = headers.copy()
+            headers["Accept"] = "application/json, text/javascript, */*; q=0.01"
+            response = self.session.get(url, headers=headers, timeout=15)
+            
+            if response.status_code == 200:
+                try:
+                    data = response.json()
+                    corp_action = pd.DataFrame(data)
+                    if filter is not None:
+                        corp_action = corp_action[corp_action['subject'].str.contains(filter, case=False, na=False)]
+                    return corp_action
+                except Exception as json_err:
+                    print(f"Corporate Actions JSON Error: {json_err} - Data: {response.text[:100]}")
+                    return pd.DataFrame()
+            else:
+                print(f"Corporate Actions API Status: {response.status_code}")
+                return pd.DataFrame()
+        except Exception as e:
+            print(f"Error fetching Corporate Action Data: {e}")
+            return pd.DataFrame()
 
     def get_corporate_announcement(self, from_date_str: str = None, to_date_str: str = None):
-
         # Fetch Corporate Announcements data from NSE
         if from_date_str is None:
             from_date  = datetime.now() - timedelta(days=30)
             from_date_str = from_date.strftime("%d-%m-%Y")
-            to_date_str = datetime.now().strftime("%d-%m-%Y")
         if to_date_str is None:
             to_date_str = datetime.now().strftime("%d-%m-%Y")
 
+        headers = self.headers.copy()
+        headers["Referer"] = "https://www.nseindia.com/companies-listing/corporate-filings-announcements"
+
         try:
-            ref_url = ('https://www.nseindia.com/companies-listing/corporate-filings-announcements')
-            ref = requests.get(ref_url, headers=self.headers)
+            # Refresh session cookies
+            self.session.get("https://www.nseindia.com", timeout=10)
             url = f'https://www.nseindia.com/api/corporate-announcements?index=equities&from_date={from_date_str}&to_date={to_date_str}'
-            data_obj = self.session.get(url, headers=self.headers, cookies=ref.cookies.get_dict())
-            corp_announcement = pd.DataFrame(data_obj.json())
-            return corp_announcement
-        except:
-            print("Error fetching Corporate Action Data. Check your input")
-            return None
+            response = self.session.get(url, headers=headers, timeout=15)
+            
+            if response.status_code == 200:
+                try:
+                    data = response.json()
+                    return pd.DataFrame(data)
+                except Exception as json_err:
+                    print(f"Corporate Announcements JSON Error: {json_err}")
+                    return pd.DataFrame()
+            else:
+                print(f"Corporate Announcements API Status: {response.status_code}")
+                return pd.DataFrame()
+        except Exception as e:
+            print(f"Error fetching Corporate Announcements: {e}")
+            return pd.DataFrame()
 
     def get_index_pe_ratio(self):
 
