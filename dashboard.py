@@ -253,6 +253,22 @@ def load_stock_data(symbol):
 # UI COMPONENTS
 def render_sidebar():
     st.sidebar.title("Navigation")
+    
+    # Broker status indicator
+    try:
+        from libs.broker_manager import BrokerManager
+        broker_mgr = BrokerManager()
+        has_creds, broker_name, error = broker_mgr.check_active_broker_credentials()
+        
+        if has_creds and not error:
+            st.sidebar.success(f"🟢 {broker_name.upper()} Active")
+        elif broker_name:
+            st.sidebar.warning(f"🟡 {broker_name.upper()} (Check Config)")
+        else:
+            st.sidebar.error("🔴 No Broker Configured")
+    except Exception as e:
+        st.sidebar.info("⚪ Broker Status Unknown")
+    
     page = st.sidebar.radio("Go to:", [
         "Stock Analysis", 
         "Market Overview", 
@@ -262,7 +278,9 @@ def render_sidebar():
         "Quad Report Card", 
         "ML Predictions", 
         "Strategy Backtesting",
+        "PKScreener",
         "MLOps Monitor",
+        "Broker Configuration",
         "Data Management", 
         "Database Info"
     ])
@@ -1338,7 +1356,7 @@ def page_ml_predictions():
             st.subheader("Feature Importance Table")
             st.dataframe(
                 importance_df.style.format({'importance': '{:.4f}'}),
-                use_container_width=True,
+                width="stretch",
                 height=400
             )
             
@@ -1505,7 +1523,7 @@ def page_ml_predictions():
                     'confidence_up': '{:.1%}',
                     'actual_return': '{:.2%}'
                 }),
-                use_container_width=True,
+                width="stretch",
                 height=400
             )
             
@@ -1653,6 +1671,8 @@ def page_ml_predictions():
                 st.markdown("### LSTM Deep Learning")
                 # Generate sequence
                 generator = SequenceGenerator(lookback=20)
+                # Initialize path variable
+                lstm_path = models_dir / f"{symbol}_{timeframe}_lstm_v1.pth"
                 try:
                     # Get sequence for latest data
                     # Need scaling from saved scaler? The pipeline handles it?
@@ -1665,7 +1685,7 @@ def page_ml_predictions():
                     # Load LSTM model
                     lstm_model = LSTMClassifier(input_size=47, hidden_size=64, num_layers=1)
                     # Check for model file
-                    lstm_path = models_dir / f"{symbol}_{timeframe}_lstm_v1.pth"
+                    # lstm_path defined above
                     
                     if lstm_path.exists():
                         checkpoint = torch.load(str(lstm_path), map_location='cpu')
@@ -1783,7 +1803,7 @@ def page_ml_predictions():
                         top_shap = pd.DataFrame(explanation['top_features'])
                         st.dataframe(
                             top_shap[['feature', 'shap_value', 'feature_value', 'abs_shap_value']].style.background_gradient(subset=['shap_value'], cmap='RdBu'),
-                            use_container_width=True
+                            width="stretch"
                         )
                     except Exception as e:
                          st.error(f"Error calculating explanation: {e}")
@@ -1795,7 +1815,259 @@ def page_ml_predictions():
 
 
 
-def page_backtesting():
+
+def page_pkscreener():
+    """
+    PKScreener Integration Page.
+    """
+    st.title("🚀 PKScreener Integration")
+    st.markdown("Run advanced technical scans using [PKScreener](https://github.com/pkjmesra/PKScreener).")
+
+    # Import adapter
+    sys.path.append(str(PROJECT_ROOT)) # Ensure root is in path
+    try:
+        from libs.pkscreener_adapter import game_scanner
+    except ImportError as e:
+        st.error(f"Failed to import PKScreener Adapter: {e}")
+        return
+
+    # Mode Selection (Outside form for interactivity)
+    scan_mode = st.radio("Selection Mode", ["Predefined Index", "Saved Stock Lists" , "Upload New List"], horizontal=True)
+
+    # Database Initialization (Ensure table exists)
+    import sqlite3
+    db_path = PROJECT_ROOT / "data" / "trading.db"
+    
+    def init_custom_lists_db():
+        with sqlite3.connect(db_path) as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS custom_stock_lists (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT UNIQUE NOT NULL,
+                    symbols TEXT NOT NULL,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+    
+    init_custom_lists_db()
+
+    # Helpers
+    def get_saved_lists():
+        with sqlite3.connect(db_path) as conn:
+            return pd.read_sql("SELECT name, symbols FROM custom_stock_lists ORDER BY created_at DESC", conn)
+
+    def save_list(name, symbols):
+        if not name: return False, "Name required"
+        if not symbols: return False, "No symbols"
+        try:
+            with sqlite3.connect(db_path) as conn:
+                conn.execute(
+                    "INSERT OR REPLACE INTO custom_stock_lists (name, symbols) VALUES (?, ?)", 
+                    (name, ",".join(symbols))
+                )
+            return True, "Saved"
+        except Exception as e:
+            return False, str(e)
+
+    # Configuration Form
+    with st.form("pkscreener_form"):
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            scan_option = st.selectbox(
+                "Scan Type",
+                options=["X"],
+                format_func=lambda x: "Scanners (X)" if x == "X" else x
+            )
+            
+        with col2:
+            custom_stock_list = []
+            index_option = "12" # Default fallback
+            selected_list_name = None
+            
+            if scan_mode == "Predefined Index":
+                index_option = st.selectbox(
+                    "Index / Stock List",
+                    options=["12", "5", "8", "11", "13", "14"],
+                    format_func=lambda x: {
+                        "12": "Nifty 50",
+                        "5": "Nifty Next 50", 
+                        "8": "Nifty 100",
+                        "11": "Nifty 500",
+                        "13": "Newly Listed",
+                        "14": "F&O Stocks"
+                    }.get(x, x)
+                )
+            elif scan_mode == "Saved Stock Lists":
+                df_lists = get_saved_lists()
+                if not df_lists.empty:
+                    selected_list_name = st.selectbox("Select Saved List", df_lists['name'].tolist())
+                else:
+                    st.warning("No saved lists found.")
+                    
+            else: # Upload New
+                st.markdown("**Upload New List**")
+                uploaded_file = st.file_uploader("Upload CSV/Excel", type=['csv', 'xlsx'])
+                text_symbols = st.text_area("Or copy-paste symbols")
+                save_name = st.text_input("Save as (Optional Name to store in DB)")
+                
+        with col3:
+            sub_option = st.selectbox(
+                "Strategy",
+                options=["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35"],
+                format_func=lambda x: {
+                    "0": "Full Screening",
+                    "1": "Momentum",
+                    "2": "Breakouts",
+                    "3": "Consolidation",
+                    "4": "Volume Monitor",
+                    "5": "RSI / ADX / Ichimoku",
+                    "6": "Reversals / MAs",
+                    "7": "Chart Patterns",
+                    "8": "CCI / MA / Volume",
+                    "9": "Volume Shockers",
+                    "10": "Kellner Channels",
+                    "11": "Stock Performance",
+                    "12": "Nifty/Market Strength",
+                    "13": "Momentum (Short)",
+                    "14": "Breakout (Short)",
+                    "15": "Consolidation (Short)",
+                    "16": "Volume Monitor (Short)",
+                    "17": "Stock Performance (Short)",
+                    "18": "Live Trends",
+                    "19": "Live Trends (Short)",
+                    "20": "Closing / Next Day",
+                    "21": "Closing / Next Day (Short)",
+                    "22": "Intraday (High Vol)",
+                    "23": "Intraday (Momentum)",
+                    "24": "Intraday (Reversals)",
+                    "25": "Intraday (Breakouts)",
+                    "26": "Intraday (Volume)",
+                    "27": "Intraday (High Vol Short)",
+                    "28": "Intraday (Momentum Short)",
+                    "29": "Intraday (Reversals Short)",
+                    "30": "Intraday (Breakouts Short)",
+                    "31": "Intraday (Volume Short)",
+                    "32": "Quick Daily Scans",
+                    "33": "Quick Daily Scans (Short)",
+                    "34": "Live Index Scan",
+                    "35": "Live Index Scan (Short)"
+                 }.get(x, f"Option {x}")
+            )
+            
+        with st.expander("⚙️ Advanced Configuration (Timeframe, Period, Filters)"):
+            c1, c2, c3, c4 = st.columns(4)
+            with c1:
+                cfg_duration = st.selectbox("Duration (Timeframe)", options=["1d", "15m", "5m", "1h"], index=0)
+            with c2:
+                cfg_period = st.selectbox("Lookback Period", options=["1y", "2y", "220d", "500d"], index=0)
+            with c3:
+                cfg_minvol = st.number_input("Min Volume", value=10000, step=5000)
+            with c4:
+                cfg_rsi = st.checkbox("Calc RSI Intraday", value=True)
+
+        submit = st.form_submit_button("Run Scan 🔍")
+        
+    if submit:
+        # Update Config
+        settings = {
+            'config.duration': cfg_duration,
+            'config.period': cfg_period,
+            'filters.minimumvolume': cfg_minvol,
+            'config.calculatersiintraday': 'y' if cfg_rsi else 'n'
+        }
+        if not game_scanner.update_config(settings):
+            st.warning("Could not update PKScreener configuration. Proceeding with defaults.")
+            
+        # Process Custom List
+        final_stock_list = None
+        
+        # Mode 1: Saved List
+        if scan_mode == "Saved Stock Lists":
+            if selected_list_name:
+                df_lists = get_saved_lists()
+                symbols_str = df_lists[df_lists['name'] == selected_list_name]['symbols'].iloc[0]
+                final_stock_list = symbols_str.split(',')
+            else:
+                st.error("Please select a list.")
+                return
+
+        # Mode 2: Upload logic
+        elif scan_mode == "Upload New List":
+            final_stock_list = []
+            
+            # 1. From Text
+            if text_symbols:
+                raw_list = text_symbols.replace('\n', ',').split(',')
+                final_stock_list.extend([s.strip().upper() for s in raw_list if s.strip()])
+                
+            # 2. From File
+            if uploaded_file:
+                try:
+                    if uploaded_file.name.endswith('.csv'):
+                        df_upload = pd.read_csv(uploaded_file)
+                    else:
+                        df_upload = pd.read_excel(uploaded_file)
+                    
+                    found_col = None
+                    possible_cols = ['Symbol', 'SYMBOL', 'Stock Code', 'Ticker']
+                    for col in df_upload.columns:
+                        if col in possible_cols:
+                            found_col = col
+                            break
+                    
+                    if found_col:
+                        final_stock_list.extend(df_upload[found_col].astype(str).str.upper().tolist())
+                    else:
+                         final_stock_list.extend(df_upload.iloc[:, 0].astype(str).str.upper().tolist())
+                         
+                    st.info(f"Loaded {len(final_stock_list)} symbols from file.")
+                    
+                except Exception as e:
+                    st.error(f"Error reading file: {e}")
+            
+            final_stock_list = list(set(final_stock_list))
+            
+            # Save to DB if requested
+            if save_name and final_stock_list:
+                success, msg = save_list(save_name, final_stock_list)
+                if success:
+                    st.success(f"Running scan and SAVED list as '{save_name}' to Database!")
+                else:
+                    st.error(f"Failed to save list: {msg}")
+
+            if not final_stock_list:
+                st.error("No valid symbols found in input.")
+                return
+
+        with st.spinner(f"Running PKScreener (Option {scan_option}:{index_option}:{sub_option})... This may take a minute."):
+            # Run the scan asynchronously
+            import asyncio
+            try:
+                # Streamlit runs in a loop, so we can use run_until_complete or similar if compatible,
+                # but asyncio.run() is safer for isolated calls.
+                results_df = asyncio.run(game_scanner.run_scan(scan_option, index_option, sub_option, stock_list=final_stock_list))
+                
+                if not results_df.empty:
+                    st.success(f"Scan Completed! Found {len(results_df)} stocks.")
+                    st.dataframe(results_df, width="stretch")
+                    
+                    # Convert to CSV for download
+                    csv = results_df.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="Download Results as CSV",
+                        data=csv,
+                        file_name='pkscreener_results.csv',
+                        mime='text/csv',
+                    )
+                else:
+                    st.warning("No stocks found matching criteria or error executing scan.")
+                    st.info("Check terminal logs for detailed error usage.")
+                    
+            except Exception as e:
+                st.error(f"Error executing scan: {e}")
+
+
     """
     Backtesting interface for validating strategies.
     """
@@ -1915,7 +2187,7 @@ def page_backtesting():
                         st.subheader("📜 Trade Log")
                         trades_df = tester.get_trade_log()
                         if not trades_df.empty:
-                            st.dataframe(trades_df, use_container_width=True)
+                            st.dataframe(trades_df, width="stretch")
                         else:
                             st.info("No trades recorded.")
                             
@@ -1924,8 +2196,188 @@ def page_backtesting():
                     import traceback
                     st.code(traceback.format_exc())
 
+
+def page_pkscreener():
+    """
+    PKScreener Integration Page.
+    """
+    st.title("🚀 PKScreener Integration")
+    st.markdown("Run advanced technical scans using [PKScreener](https://github.com/pkjmesra/PKScreener).")
+
+    # Import adapter
+    sys.path.append(str(PROJECT_ROOT)) # Ensure root is in path
+    try:
+        from libs.pkscreener_adapter import game_scanner
+    except ImportError as e:
+        st.error(f"Failed to import PKScreener Adapter: {e}")
+        return
+
+    # Tabs for Scanner and Docs
+    tab_scan, tab_docs = st.tabs(["🔍 Run Scanner", "📚 Technical Documentation"])
+
+    with tab_scan:
+        # Configuration Form
+        with st.form("pkscreener_form"):
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                scan_option = st.selectbox(
+                    "Scan Type",
+                    options=["X"],
+                    format_func=lambda x: "Scanners (X)" if x == "X" else x
+                )
+                
+            with col2:
+                index_option = st.selectbox(
+                    "Index / Stock List",
+                    options=["12", "5", "8", "11", "13", "14"],
+                    format_func=lambda x: {
+                        "12": "Nifty 50",
+                        "5": "Nifty Next 50", 
+                        "8": "Nifty 100",
+                        "11": "Nifty 500",
+                        "13": "Newly Listed",
+                        "14": "F&O Stocks"
+                    }.get(x, x)
+                )
+                
+            with col3:
+                sub_option = st.selectbox(
+                    "Strategy",
+                    options=["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35"],
+                    format_func=lambda x: {
+                        "0": "Full Screening",
+                        "1": "Momentum",
+                        "2": "Breakouts",
+                        "3": "Consolidation",
+                        "4": "Volume Monitor",
+                        "5": "RSI / ADX / Ichimoku",
+                        "6": "Reversals / MAs",
+                        "7": "Chart Patterns",
+                        "8": "CCI / MA / Volume",
+                        "9": "Volume Shockers",
+                        "10": "Kellner Channels",
+                        "11": "Stock Performance",
+                        "12": "Nifty/Market Strength",
+                        "13": "Momentum (Short)",
+                        "14": "Breakout (Short)",
+                        "15": "Consolidation (Short)",
+                        "16": "Volume Monitor (Short)",
+                        "17": "Stock Performance (Short)",
+                        "18": "Live Trends",
+                        "19": "Live Trends (Short)",
+                        "20": "Closing / Next Day",
+                        "21": "Closing / Next Day (Short)",
+                        "22": "Intraday (High Vol)",
+                        "23": "Intraday (Momentum)",
+                        "24": "Intraday (Reversals)",
+                        "25": "Intraday (Breakouts)",
+                        "26": "Intraday (Volume)",
+                        "27": "Intraday (High Vol Short)",
+                        "28": "Intraday (Momentum Short)",
+                        "29": "Intraday (Reversals Short)",
+                        "30": "Intraday (Breakouts Short)",
+                        "31": "Intraday (Volume Short)",
+                        "32": "Quick Daily Scans",
+                        "33": "Quick Daily Scans (Short)",
+                        "34": "Live Index Scan",
+                        "35": "Live Index Scan (Short)"
+                     }.get(x, f"Option {x}")
+                )
+                
+            submit = st.form_submit_button("Run Scan 🔍")
+        
+    if submit:
+        with st.spinner(f"Running PKScreener (Option {scan_option}:{index_option}:{sub_option})... This may take a minute."):
+            # Run the scan asynchronously
+            import asyncio
+            try:
+                # Streamlit runs in a loop, running asyncio.run inside it can be tricky.
+                # However, for a simple script it often works if no other loop is running.
+                # If it fails, we can fall back to normal execution.
+                try:
+                    results_df = asyncio.run(game_scanner.run_scan(scan_option, index_option, sub_option))
+                except RuntimeError:
+                    # If event loop is already running
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    results_df = loop.run_until_complete(game_scanner.run_scan(scan_option, index_option, sub_option))
+
+
+                if not results_df.empty:
+                    st.success(f"Scan Completed! Found {len(results_df)} stocks.")
+                    st.dataframe(results_df, width="stretch")
+                    
+                    # Convert to CSV for download
+                    csv = results_df.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="Download Results as CSV",
+                        data=csv,
+                        file_name='pkscreener_results.csv',
+                        mime='text/csv',
+                    )
+                else:
+                    st.warning("No stocks found matching criteria or error executing scan.")
+                    st.info("Check terminal logs for detailed error usage.")
+                    
+            except Exception as e:
+                st.error(f"Error executing scan: {e}")
+
+    with tab_docs:
+        try:
+            doc_path = PROJECT_ROOT / "docs" / "pkscreener_analysis.md"
+            if doc_path.exists():
+                with open(doc_path, "r") as f:
+                    st.markdown(f.read())
+            else:
+                 st.info("Documentation not found at docs/pkscreener_analysis.md")
+        except Exception as e:
+            st.error(f"Error loading documentation: {e}")
+
+
 # Add this function to dashboard.py
 def main():
+    st.set_page_config(
+        page_title="Trading Dashboard",
+        page_icon="📈",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
+    
+    # Broker credential check on startup
+    try:
+        from libs.broker_manager import BrokerManager
+        broker_mgr = BrokerManager()
+        has_creds, broker_name, error = broker_mgr.check_active_broker_credentials()
+        
+        if not has_creds:
+            if not broker_name:
+                st.warning(
+                    "⚠️ **No broker configured.** Please configure your broker credentials to enable live trading features.",
+                    icon="⚠️"
+                )
+                if st.button("Configure Broker Now →"):
+                    st.session_state['force_broker_config'] = True
+                    st.rerun()
+            elif error and "not yet validated" not in error:
+                st.error(
+                    f"❌ **Broker authentication issue:** {error}",
+                    icon="❌"
+                )
+                if st.button("Update Credentials →"):
+                    st.session_state['force_broker_config'] = True
+                    st.rerun()
+    except Exception as e:
+        # Silently fail if broker manager not available
+        pass
+    
+    # Force broker config page if requested
+    if st.session_state.get('force_broker_config'):
+        from pages.broker_config import page_broker_config
+        page_broker_config()
+        st.session_state['force_broker_config'] = False
+        return
+    
     page = render_sidebar()
     if page == "Stock Analysis":
         page_stock_analysis()
@@ -1941,8 +2393,13 @@ def main():
         page_quad_report()
     elif page == "ML Predictions":
         page_ml_predictions()
+    elif page == "PKScreener":
+        page_pkscreener()
     elif page == "Strategy Backtesting":
         page_backtesting()
+    elif page == "Broker Configuration":
+        from pages.broker_config import page_broker_config
+        page_broker_config()
     elif page == "Data Management":
         page_data_management()
     elif page == "Database Info":
@@ -2063,7 +2520,7 @@ def page_mlops():
                 # Clean up columns for display
                 cols = [c for c in runs.columns if c.startswith("metrics.") or c.startswith("params.") or c == "tags.mlflow.runName"]
                 display_df = runs[cols].head(10)
-                st.dataframe(display_df, use_container_width=True)
+                st.dataframe(display_df, width="stretch")
             else:
                 st.info("No experiments found in MLflow.")
         else:

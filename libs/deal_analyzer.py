@@ -36,7 +36,7 @@ class DealAnalyzer:
                 # Load Bulk Deals
                 bulk_df = pd.DataFrame()
                 if self._table_exists("market_bulk_deals"):
-                    bulk_query = f"SELECT * FROM market_bulk_deals WHERE date >= '{since_date}'"
+                    bulk_query = f"SELECT * FROM market_bulk_deals WHERE BD_DT_DATE >= '{since_date}'"
                     bulk_df = pd.read_sql_query(bulk_query, conn)
                 
                 # Load Block Deals
@@ -109,7 +109,7 @@ class DealAnalyzer:
             with sqlite3.connect(str(self.db_path)) as conn:
                 df = pd.DataFrame()
                 if self._table_exists("market_bulk_deals"):
-                    query = f"SELECT * FROM market_bulk_deals WHERE symbol = '{symbol}' AND date >= '{since_date}'"
+                    query = f"SELECT * FROM market_bulk_deals WHERE BD_SYMBOL = '{symbol}' AND BD_DT_DATE >= '{since_date}'"
                     df = pd.read_sql_query(query, conn)
                 
                 block_df = pd.DataFrame()
